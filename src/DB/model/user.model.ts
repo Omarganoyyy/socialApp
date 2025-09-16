@@ -1,0 +1,158 @@
+import {Types,Schema,model,models, HydratedDocument} from "mongoose"
+import { generateHash } from "../../utils/security/hash.security"
+import { emailEvent } from "../../utils/event/email.event"
+
+
+export enum GenderEnum 
+{
+    male="male",
+    female="female"
+}
+
+export enum RoleEnum
+{
+    user="user",
+    admin="admin"
+}
+
+export enum ProviderEnum
+{
+    GOOGLE="GOOGLE",
+    SYSTEM="SYSTEM"
+}
+
+export interface IUser   //interface in the application
+{
+    _id:Types.ObjectId
+
+    firstName:string
+    lastName:string
+    username?:string
+
+    email:string
+    confirmEmailOtp?:string
+    confirmedAt?:Date
+
+    password:string
+    resetPasswordOtp?:string
+    changeCredentialsTime?:Date
+
+    phone?:string
+    address?:string
+
+    profileImage?:string
+    tempProfileImage?:string
+    coverImage?:string[]
+    
+    gender:GenderEnum
+    role:RoleEnum
+    provider:ProviderEnum
+
+    freezedAt?:Date
+    freezedBy?:Date
+    restoredAt?:Date
+    restoredBy?:Date
+    createdAt:Date
+    updatedAt?:Date
+}
+
+
+const userSchema=new Schema<IUser>(   //schema in DB 
+    {
+
+
+    firstName:{type:String,required:true,minLength:2,maxLength:20},
+    lastName:{type:String,required:true,minLength:2,maxLength:20},
+
+
+    email:{type:String,required:true,unique:true},
+    confirmEmailOtp:{type:String},
+    confirmedAt:{type:Date},
+
+    password:{type:String,required:function(){
+        return this.provider === ProviderEnum.GOOGLE ? false : true
+    }},
+    resetPasswordOtp:{type:String},
+    changeCredentialsTime:{type:Date},
+
+    phone:{type:String},
+    address:{type:String},
+
+    profileImage:{type:String},
+    coverImage:[String],
+    tempProfileImage:{type:String},
+    
+    gender:{type:String,enum:GenderEnum,default:GenderEnum.male},
+    role:{type:String,enum:RoleEnum,default:RoleEnum.user},
+    provider:{type:String,enum:ProviderEnum,default:ProviderEnum.SYSTEM},
+
+    freezedAt:Date,
+    freezedBy:{type:Schema.Types.ObjectId,ref:"User"},
+    restoredAt:Date,
+    restoredBy:{type:Schema.Types.ObjectId,ref:"User"},
+    
+    createdAt:{type:Date},
+    updatedAt:{type:Date},
+
+    },{
+        timestamps:true,
+        toJSON:{virtuals:true},
+        toObject:{virtuals:true}
+
+    })
+
+    userSchema.virtual("username").set(function(value:string)
+    {
+        const [firstName,lastName]=value.split(" ")||[]
+        this.set({firstName,lastName})
+    }).get(function()
+{
+    return this.firstName+" "+this.lastName
+})
+
+userSchema.pre("save",async function(this:HUserDocument & {wasNew:boolean;confirmEmailPlainOtp?:string},next)
+{
+    this.wasNew=this.isNew
+    if(this.isModified("password"))
+    {
+        this.password=await generateHash(this.password)
+    }
+    if(this.isModified("confirmEmailOtp"))
+    {
+        this.confirmEmailOtp=await generateHash(this.confirmEmailOtp as string)
+        this.confirmEmailOtp=this.confirmEmailOtp as string
+    }
+
+    next()
+})
+
+userSchema.post("save",async function (doc,next)
+{
+    const that = this as HUserDocument & {wasNew:boolean;confirmEmailPlainOtp?:string}
+    if(that.wasNew && that.confirmEmailPlainOtp)
+    {
+        emailEvent.emit("confirmEmail",{
+            to:this.email,
+            otp:that.confirmEmailPlainOtp,
+        })
+    }
+})
+userSchema.pre(["find",'findOne'],function (next)
+{
+    const query=this.getQuery()
+    if(query.paranoid===false)
+    {
+        this.setQuery({...query})
+    }
+    else
+    {
+        this.setQuery({...query,freezedAt:{$exists:false}})
+    }
+    next()
+})
+ 
+
+
+export const UserModel=models.User || model<IUser>("User",userSchema)
+//UserModel.syncIndexes()
+export type HUserDocument=HydratedDocument<IUser>
