@@ -1,6 +1,7 @@
 import {Types,Schema,model,models, HydratedDocument} from "mongoose"
 import { generateHash } from "../../utils/security/hash.security"
 import { emailEvent } from "../../utils/event/email.event"
+import { AvailabilityEnum } from "./post.model"
 
 
 export enum GenderEnum 
@@ -12,7 +13,8 @@ export enum GenderEnum
 export enum RoleEnum
 {
     user="user",
-    admin="admin"
+    admin="admin",
+    superAdmin="super-admin"
 }
 
 export enum ProviderEnum
@@ -47,11 +49,14 @@ export interface IUser   //interface in the application
     gender:GenderEnum
     role:RoleEnum
     provider:ProviderEnum
+    
 
     freezedAt?:Date
     freezedBy?:Date
     restoredAt?:Date
     restoredBy?:Date
+    friends:Types.ObjectId[]
+    
     createdAt:Date
     updatedAt?:Date
 }
@@ -85,12 +90,14 @@ const userSchema=new Schema<IUser>(   //schema in DB
     gender:{type:String,enum:GenderEnum,default:GenderEnum.male},
     role:{type:String,enum:RoleEnum,default:RoleEnum.user},
     provider:{type:String,enum:ProviderEnum,default:ProviderEnum.SYSTEM},
+    
 
     freezedAt:Date,
     freezedBy:{type:Schema.Types.ObjectId,ref:"User"},
     restoredAt:Date,
     restoredBy:{type:Schema.Types.ObjectId,ref:"User"},
-    
+    friends:[{type:Schema.Types.ObjectId,ref:'User'}],
+
     createdAt:{type:Date},
     updatedAt:{type:Date},
 

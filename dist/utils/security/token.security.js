@@ -36,6 +36,7 @@ const detectSignatureLevel = async (role = user_model_1.RoleEnum.user) => {
     let signatureLevel = SignatureLevelEnum.Bearer;
     switch (role) {
         case user_model_1.RoleEnum.admin:
+        case user_model_1.RoleEnum.superAdmin:
             signatureLevel = SignatureLevelEnum.System;
             break;
         default:
@@ -102,7 +103,7 @@ const decodeToken = async ({ authorization, tokenType = TokenEnum.access }) => {
     if (!user) {
         throw new error_response_1.BadRequestException("Not register account");
     }
-    if (user.changeCredentialsTime?.getTime() || 0 > decoded.iat * 1000) {
+    if ((user.changeCredentialsTime?.getTime() || 0) > decoded.iat * 1000) {
         throw new error_response_1.UnauthorizedException("invalid or old login credentials");
     }
     return { user, decoded };

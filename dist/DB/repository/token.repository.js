@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TokenRepository = void 0;
 const database_repository_1 = require("./database.repository");
-class TokenRepository extends database_repository_1.DatabaseRepository {
+class TokenRepository extends database_repository_1.DatabaseRespository {
     model;
     constructor(model) {
         super(model);

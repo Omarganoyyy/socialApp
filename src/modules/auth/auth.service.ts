@@ -32,7 +32,7 @@ class AuthenticationService {
     signup = async (req: Request, res: Response): Promise<Response> => {
 
 
-        let { username, email, password }: ISignupBodyInputsDto = req.body;
+        const { username, email, password }: ISignupBodyInputsDto = req.body;
         console.log({ username, email, password });
 
         const checkUserExist = await this.userModel.findOne({
@@ -51,7 +51,7 @@ class AuthenticationService {
         const otp = generateNumberOtp();
 
         await this.userModel.createUser({
-            data: {username, email, password, confirmEmailOtp:`${otp}`,},
+            data: [{username, email, password, confirmEmailOtp:`${otp}`}],
         })
 
         emailEvent.emit("confirmEmail", { to: email, otp });

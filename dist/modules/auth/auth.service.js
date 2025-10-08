@@ -25,7 +25,7 @@ class AuthenticationService {
         return payload;
     }
     signup = async (req, res) => {
-        let { username, email, password } = req.body;
+        const { username, email, password } = req.body;
         console.log({ username, email, password });
         const checkUserExist = await this.userModel.findOne({
             filter: { email },
@@ -40,7 +40,7 @@ class AuthenticationService {
         }
         const otp = (0, otp_1.generateNumberOtp)();
         await this.userModel.createUser({
-            data: { username, email, password, confirmEmailOtp: `${otp}`, },
+            data: [{ username, email, password, confirmEmailOtp: `${otp}` }],
         });
         email_event_1.emailEvent.emit("confirmEmail", { to: email, otp });
         console.log(email);

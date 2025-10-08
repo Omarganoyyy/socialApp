@@ -36,7 +36,16 @@
     "mongoose": "^8.18.0",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.6",
+    "socket.io": "^4.5.3",
     "uuid": "^11.1.0",
     "zod": "^4.1.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Omarganoyyy/socialApp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Omarganoyyy/socialApp/issues"
+  },
+  "homepage": "https://github.com/Omarganoyyy/socialApp#readme"
 }

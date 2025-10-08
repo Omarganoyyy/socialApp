@@ -1,5 +1,5 @@
 import { JwtPayload } from "jsonwebtoken";
-import { HUserDocument, RoleEnum } from "../DB/model/User.model";
+import { HUserDocument, RoleEnum } from "../DB/model/user.model";
 import { Request,Response,NextFunction } from "express";
 import { BadRequestException, ForbiddenException } from "../utils/response/error.response";
 import {decodeToken, TokenEnum} from '../utils/security/token.security'

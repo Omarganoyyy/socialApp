@@ -39,8 +39,10 @@ const postSchema = new mongoose_1.Schema({
 }, {
     timestamps: true,
     strictQuery: true,
+    toObject: { virtuals: true },
+    toJSON: { virtuals: true },
 });
-postSchema.pre(["find", 'findOne'], function (next) {
+postSchema.pre(["find", 'findOne', "countDocuments"], function (next) {
     const query = this.getQuery();
     if (query.paranoid === false) {
         this.setQuery({ ...query });
@@ -50,5 +52,20 @@ postSchema.pre(["find", 'findOne'], function (next) {
     }
     console.log(this.getQuery());
     next();
+});
+postSchema.pre(["updateOne", 'findOneAndUpdate'], function (next) {
+    const query = this.getQuery();
+    if (query.paranoid === false) {
+        this.setQuery({ ...query });
+    }
+    else {
+        this.setQuery({ ...query, freezedAt: { $exists: false } });
+    }
+    next();
+});
+postSchema.virtual("comments", {
+    localField: "_id",
+    foreignField: "postId",
+    ref: "Comment"
 });
 exports.PostModel = mongoose_1.models.post || (0, mongoose_1.model)("Post", postSchema);

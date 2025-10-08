@@ -1,9 +1,9 @@
 import { CreateOptions, HydratedDocument, Model } from "mongoose";
 import { IUser as TDocument} from "../model/user.model";
-import { DatabaseRepository } from "./database.repository";
+import { DatabaseRespository } from "./database.repository";
 import { BadRequestException } from "../../utils/response/error.response";
 
-export class UserRepository extends DatabaseRepository<TDocument>
+export class UserRepository extends DatabaseRespository<TDocument>
 {
     constructor(protected override readonly model:Model<TDocument>)
     {

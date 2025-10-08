@@ -47,6 +47,8 @@ export type HPostDocument=HydratedDocument<IPost>
 
 const postSchema=new Schema<IPost>
 ({
+
+
     content:{type:String,minLength:2,maxLength:50000,required:function()
         {
             return !this.attachments?.length
@@ -62,7 +64,7 @@ const postSchema=new Schema<IPost>
     tags:[{type:Schema.Types.ObjectId,ref:"User"}],
 
     createdBy:{type:Schema.Types.ObjectId,ref:"User",required:true},
-
+    
     freezedAt:Date,
     freezedBy:{type:Schema.Types.ObjectId,ref:"User"},
 
@@ -76,9 +78,11 @@ const postSchema=new Schema<IPost>
 {
     timestamps:true,
     strictQuery:true,
+    toObject:{virtuals:true},
+    toJSON:{virtuals:true},
 })
 
-postSchema.pre(["find",'findOne'],function (next)
+postSchema.pre(["find",'findOne',"countDocuments"],function (next)
 {
     const query=this.getQuery()
     if(query.paranoid===false)
@@ -92,6 +96,26 @@ postSchema.pre(["find",'findOne'],function (next)
     console.log(this.getQuery())
 
     next()
+})
+
+postSchema.pre(["updateOne",'findOneAndUpdate'],function (next)
+{
+    const query=this.getQuery()
+    if(query.paranoid===false)
+    {
+        this.setQuery({...query})
+    }
+    else
+    {
+        this.setQuery({...query,freezedAt:{$exists:false}})
+    }
+    next()
+})
+
+postSchema.virtual("comments",{
+    localField:"_id",
+    foreignField:"postId",
+    ref:"Comment"
 })
 
 export const PostModel=models.post || model<IPost>("Post",postSchema) 

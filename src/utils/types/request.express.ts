@@ -1,5 +1,5 @@
 import { JwtPayload } from "jsonwebtoken";
-import { HUserDocument } from "../../DB/model/User.model";
+import { HUserDocument } from "../../DB/model/user.model";
 
 declare module "express-serve-static-core"{
     interface Request{

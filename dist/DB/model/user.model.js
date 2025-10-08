@@ -13,6 +13,7 @@ var RoleEnum;
 (function (RoleEnum) {
     RoleEnum["user"] = "user";
     RoleEnum["admin"] = "admin";
+    RoleEnum["superAdmin"] = "super-admin";
 })(RoleEnum || (exports.RoleEnum = RoleEnum = {}));
 var ProviderEnum;
 (function (ProviderEnum) {
@@ -43,6 +44,7 @@ const userSchema = new mongoose_1.Schema(//schema in DB
     freezedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: "User" },
     restoredAt: Date,
     restoredBy: { type: mongoose_1.Schema.Types.ObjectId, ref: "User" },
+    friends: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
     createdAt: { type: Date },
     updatedAt: { type: Date },
 }, {
