@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { successResponse } from "../../utils/response/success.response";
 import { PostRepository, UserRepository } from "../../DB/repository";
-import { UserModel } from "../../DB/model/user.model";
+import { HUserDocument, UserModel } from "../../DB/model/user.model";
 import { AvailabilityEnum, HPostDocument, LikeActionEnum, PostModel } from "../../DB/model/post.model";
 import { BadRequestException, NotFoundException } from "../../utils/response/error.response";
 import { v4 as uuid } from 'uuid'
@@ -12,25 +12,26 @@ import { StorageEnum } from "../../utils/multer/cloud.multer";
 import { CommentRepository } from "../../DB/repository/comment.repository";
 import { commentModel } from "../../DB/model";
 import { connectedSockets, getIo } from "../gateway";
+import { GraphQLError } from "graphql";
 
 
-export const postAvailability = (req: Request) => {
+export const postAvailability = (user:HUserDocument) => {
     return [
         { availability: AvailabilityEnum.public },
-        { availability: AvailabilityEnum.onlyMe, createdBy: req.user?._id },
+        { availability: AvailabilityEnum.onlyMe, createdBy: user?._id },
         {
             availability: AvailabilityEnum.private,
-            createdBy: { $in: [...(req.user?.friends || []), req.user?._id] },
+            createdBy: { $in: [...(user.friends || []), user?._id] },
 
         },
         {
             availability: { $ne: AvailabilityEnum.onlyMe },
-            tags: { $in: req.user?._id }
+            tags: { $in: user?._id }
         },
     ]
 }
 
-class PostService {
+export class PostService {
 
     private userModel = new UserRepository(UserModel)
     private postModel = new PostRepository(PostModel)
@@ -167,7 +168,7 @@ class PostService {
         const post = await this.postModel.findOneAndUpdate({
             filter: {
                 _id: postId,
-                $or: postAvailability(req),
+                $or: postAvailability(req.user as HUserDocument),
             },
             update,
         });
@@ -177,7 +178,7 @@ class PostService {
 
         if (action !== LikeActionEnum.unlike)
         {
-            getIo().to(connectedSockets.get(post.createdBy.toString()) as string[]).emit("likePost",{postId,userId:req.user?._id})
+            getIo().to(connectedSockets.get(post.createdBy.toString()) as string).emit("likePost",{postId,userId:req.user?._id})
         }
 
         return successResponse({ res });
@@ -191,7 +192,7 @@ class PostService {
         };
         const posts = await this.postModel.paginate({
             filter: {
-                $or: postAvailability(req),
+                $or: postAvailability(req.user as HUserDocument),
             },
             options: {
                 populate: [
@@ -235,6 +236,76 @@ class PostService {
         return successResponse({ res, data: { posts } });
     }
 
-}
+     allPosts = async ({page,size}:{page:number,size:number},authUser:HUserDocument): Promise<HPostDocument[]> => {
+
+         const posts = await this.postModel.paginate({
+            filter: {
+                $or: postAvailability(authUser),
+            },
+            options: {
+                populate: [
+                    {
+                        path: "comments",
+                        match: {
+                            commentId: { $exists: false },
+                            freezedAt: { $exists: false },
+
+                        },
+                        populate: [{
+                            path: "reply",
+                            match: {
+                                commentId: { $exists: false },
+                                freezedAt: { $exists: false },
+                            },
+                            populate: [{
+                            path: "reply",
+                            match: {
+                                commentId: { $exists: false },
+                                freezedAt: { $exists: false },
+                            }
+                        }]
+                        }]
+
+                    }
+                ]
+
+            },
+            page,
+            size,
+        })
+         
+
+        return posts.result
+    }
+    likeGraphPost = async ({postId,action}:{postId:string;action:LikeActionEnum},authUser:HUserDocument): Promise<HPostDocument> => {
+        
+        let update: UpdateQuery<HPostDocument> = {
+            $addToSet: { likes: authUser._id }
+        };
+        if (action === LikeActionEnum.unlike) {
+            update = { $pull: { likes: authUser._id } };
+        }
+        const post = await this.postModel.findOneAndUpdate({
+            filter: {
+                _id: postId,
+                $or: postAvailability(authUser),
+            },
+            update,
+        });
+        if (!post) {
+            throw new GraphQLError("invalid postId or post not exist",{extensions:{statusCode:404}})
+        }
+
+        if (action !== LikeActionEnum.unlike)
+        {
+            getIo().to(connectedSockets.get(post.createdBy.toString()) as string).emit("likePost",{postId,userId:authUser._id})
+        }
+
+        return post
+    }
+
+    };
+       
+
 
 export const postService = new PostService();

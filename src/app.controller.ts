@@ -20,6 +20,11 @@ import { promisify } from "node:util";
 import { pipeline } from "node:stream";
 import { initializeTo } from "./modules/gateway";
 import { chatRouter } from "./modules/chat";
+import { schema } from "./modules/graphQl";
+import { createHandler } from "graphql-http";
+import { authentication } from "./middleware";
+
+ 
 const createS3WriteStreamPipe = promisify(pipeline)
 
 const limiter = rateLimit({
@@ -90,6 +95,14 @@ const bootstrap = async (): Promise<void> => {
         console.log(`Server is running on port ::: ${port}`)
     });
     //initializeIo(httpServer)
+
+   
+    app.get("/sayHi",(req:Request,res:Response):Response=>
+    {
+        return res.json({message:"Done"})
+    })
+
+    app.all('/graphql',authentication(),createHandler({schema:schema,context:(req)=>({user: req.raw.user})}))
 }
 
 export default bootstrap;

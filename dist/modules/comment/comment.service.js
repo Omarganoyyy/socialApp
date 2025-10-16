@@ -19,7 +19,7 @@ class CommentService {
             filter: {
                 _id: postId,
                 allowComments: model_1.AllowCommentsEnum.allow,
-                $or: (0, post_1.postAvailability)(req),
+                $or: (0, post_1.postAvailability)(req.user),
             }
         });
         if (!post) {
@@ -65,7 +65,7 @@ class CommentService {
                         path: "postId",
                         match: {
                             allowComments: model_1.AllowCommentsEnum.allow,
-                            $or: (0, post_1.postAvailability)(req)
+                            $or: (0, post_1.postAvailability)(req.user)
                         }
                     }
                 ]

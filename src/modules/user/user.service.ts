@@ -1,26 +1,73 @@
 import { Request, Response } from "express";
 import { UserRepository } from "../../DB/repository/user.repository";
-import { HUserDocument, RoleEnum, UserModel } from "../../DB/model/user.model";
-import { IFreezeAccountDTO, IHardDeleteAccountDTO, ILogoutDto, IRestoreAccountDTO } from "./user.dto";
+import { GenderEnum, HUserDocument, RoleEnum, UserModel } from "../../DB/model/user.model";
+import { IFreezeAccountDto, IHardDeleteAccountDto, ILogoutDto, IRestoreAccountDto } from "./user.dto";
 import { Types, UpdateQuery } from "mongoose";
-import { IUser } from "../../DB/model/user.model";
+// import { IUser } from "../../DB/model/User.model";
 import { createLoginCrendentials, createRevokeToken, LogoutEnum } from "../../utils/security/token.security";
 import { JwtPayload } from "jsonwebtoken";
-import { uploadFiles, createPreSigneUploadLink, deleteFiles, deleteFolderByPrefix } from "../../utils/multer/s3.config";
+import { uploadFiles, createPreSignedUploadLink, deleteFiles, deleteFolderByPrefix } from "../../utils/multer/s3.config";
 import { StorageEnum } from "../../utils/multer/cloud.multer";
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from "../../utils/response/error.response";
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "../../utils/response/error.response";
 import { s3Event } from "../../utils/multer/s3.events";
 import { successResponse } from "../../utils/response/success.response";
 import { IProfileImageResponse, IUserResponse } from "./user.entities";
 import { ILoginResponse } from "../auth/auth.entities";
 import { ChatRepository, FriendRequestRepository, PostRepository } from "../../DB/repository";
 import { ChatModel, FriendRequestModel, PostModel } from "../../DB/model";
+import { GraphQLError } from "graphql";
 
-class UserService {
-    private chatModel=new ChatRepository(ChatModel)
-    private userModel = new UserRepository(UserModel);
-    private postModel=new PostRepository(PostModel)
-    private friendRequestModel=new FriendRequestRepository(FriendRequestModel)
+export interface IUser {
+    id: number;
+    name: string;
+    email: string;
+    gender: GenderEnum;
+    password: string;
+    followers: number[];
+}
+
+let users: IUser[] = [
+    {
+        id: 1,
+        name: "yassin",
+        email: "yassin@gmail.com",
+        gender: GenderEnum.male,
+        password: "12345",
+        followers: [],
+    },
+    {
+        id: 2,
+        name: "mohammed",
+        email: "mohammed@gmail.com",
+        gender: GenderEnum.male,
+        password: "12345",
+        followers: [],
+    },
+    {
+        id: 3,
+        name: "sara",
+        email: "sara@gmail.com",
+        gender: GenderEnum.female,
+        password: "12345",
+        followers: [],
+    },
+    {
+        id: 4,
+        name: "haya",
+        email: "haya@gmail.com",
+        gender: GenderEnum.female,
+        password: "12345",
+        followers: [],
+    },
+]
+
+
+export class UserService {
+    private chatmodel: ChatRepository = new ChatRepository(ChatModel);
+    private userModel: UserRepository = new UserRepository(UserModel);
+    private postModel: PostRepository = new PostRepository(PostModel);
+    private friendRequestModel: FriendRequestRepository = new FriendRequestRepository(FriendRequestModel);
+
     constructor() { }
 
     profileImage = async (req: Request, res: Response): Promise<Response> => {
@@ -29,11 +76,10 @@ class UserService {
             ContentType,
             Originalname,
         }: { ContentType: string; Originalname: string } = req.body;
-        const { url, key } = await createPreSigneUploadLink({
+        const { url, key } = await createPreSignedUploadLink({
             ContentType,
             Originalname,
             path: `users/${req.decoded?._id}`,
-            
         });
 
         const user = await this.userModel.findByIdAndUpdate({
@@ -55,7 +101,7 @@ class UserService {
             expiresIn: 30000
         });
 
-        return successResponse<IProfileImageResponse>({ res, data: { url }})
+        return successResponse<IProfileImageResponse>({ res, data: { url } })
     };
 
     profileCoverImage = async (req: Request, res: Response): Promise<Response> => {
@@ -64,8 +110,7 @@ class UserService {
             storageApproach: StorageEnum.disk,
             files: req.files as Express.Multer.File[],
             path: `users/${req.decoded?._id}/cover`,
-            useLager: true,
-            ACL:"private"
+            useLarge: true,
         })
 
         const user = await this.userModel.findByIdAndUpdate({
@@ -80,149 +125,156 @@ class UserService {
         }
 
         if (req.user?.coverImage) {
-            await deleteFiles({ urls: req.user.coverImage });
+            await deleteFiles({ urls: req.user.coverImage || [] });
         }
 
-        return successResponse<IUserResponse>({ res, data: { user } })
+        return successResponse<IUserResponse>({
+            res, data: {
+                user,
+            }
+        })
     };
 
     profile = async (req: Request, res: Response): Promise<Response> => {
-       const profile = await this.userModel.findById({
-        id:req.user?._id as Types.ObjectId,
-        options:{
-            populate:[
-                {
-                    path:"friends",
-                    select:"firstName lastName email gender profilePicture",
-                }
-            ]
-        }
-       })
-       if(!profile)
-       {
-        throw new NotFoundException("fail to find user profile")
-       }
+        const user = await this.userModel.findById({
+            id: req.user?._id as Types.ObjectId,
+            options: {
+                populate: [
+                    {
+                        path: "friends",
+                        select: "firstName lastName email gender profileImage",
+                    }
+                ]
+            }
+        })
 
-       const groups=await this.chatModel.find({
-        filter:{
-            participants:{$in:req.user?._id as Types.ObjectId},
-            group:{$exists:true},
+        if (!user) {
+            throw new NotFoundException("fail to find your user profile")
         }
-       })
-       return successResponse<IUserResponse>({
-        res,
-        data:{user,groups},
-       })
+        const groups = await this.chatmodel.find({
+            filter: {
+                participants: {
+                    $in: req.user?._id as Types.ObjectId
+                },
+                group: {
+                    $exists: true
+                },
+            }
+        })
+
+        return successResponse<IUserResponse>({ res, data: { user, groups } });
     };
 
     dashboard = async (req: Request, res: Response): Promise<Response> => {
-       const results=await Promise.allSettled([
-         this.userModel.find({filter:{}}),
-         this.postModel.find({filter:{}}),
-       ])
-        return successResponse({ 
+        const results = await Promise.allSettled([
+            this.userModel.find({ filter: {} }),
+            this.postModel.find({ filter: {} })
+        ])
+        return successResponse({
             res,
-             data: {results} 
-            });
+            data: { results }
+        });
     };
 
     changeRole = async (req: Request, res: Response): Promise<Response> => {
-      const {userId}=req.params as unknown as {userId:Types.ObjectId}
-      const {role}:{role:RoleEnum}=req.body
-      const denyRoles:RoleEnum[]=[role,RoleEnum.superAdmin]
-      if(req.user?.role===RoleEnum.admin)
-      {
-        denyRoles.push(RoleEnum.admin)
-      }
-      const user = await this.userModel.findOneAndUpdate({
-        filter:{
-            _id:userId as Types.ObjectId,
-            role:{$nin:denyRoles},
-        },
-        update:{
-            role,
+        const { userId } = req.params as unknown as { userId: Types.ObjectId };
+        const { role }: { role: RoleEnum } = req.body;
+        const denyRoles: RoleEnum[] = [role, RoleEnum.superAdmin];
+        if (req.user?.role === RoleEnum.admin) {
+            denyRoles.push(RoleEnum.admin);
         }
-      })
-      if(!user)
-      {
-        throw new NotFoundException("fail to find matching results")
-      }
+        const user = await this.userModel.findOneAndUpdate({
+            filter: {
+                _id: userId as Types.ObjectId,
+                role: { $nin: denyRoles },
+            },
+            update: {
+                role,
+            }
+        })
 
-      return successResponse({
-        res,
-      })
+        if (!user) {
+            throw new NotFoundException("fail to find matching result")
+        }
+
+        return successResponse({
+            res,
+        });
     };
 
     sendFriendRequest = async (req: Request, res: Response): Promise<Response> => {
-      const {userId}=req.params as unknown as {userId:Types.ObjectId}
-      const checkFriendRequestExist=await this.friendRequestModel.findOne({
-        filter:{
-            createdBy:{$in:[req.user?._id,userId]},
-            sendTo:{$in:[req.user?._id,userId]},
+        const { userId } = req.params as unknown as { userId: Types.ObjectId };
+        const checkFriendRequestExist = await this.friendRequestModel.findOne({
+            filter: {
+                createdBy: { $in: [req.user?._id, userId] },
+                sendTo: { $in: [req.user?._id, userId] },
+            },
+        });
+        if (checkFriendRequestExist) {
+            throw new ConflictException("friend request already sent");
         }
-      })
-      if(checkFriendRequestExist)
-      {
-        throw new ConflictException("Friend request already sent")
-      }
-      const user=await this.userModel.findOne({filter:{_id:userId}})
-      if(!user)
-      {
-        throw new NotFoundException("Invalid recipient")
-      }
-      const [friendRequest]=(
-        await this .friendRequestModel.create({
-            data:[
-                {
-                    createdBy:req.user?._id as Types.ObjectId,
-                    sendTo:userId,
-                }
+        const user = await this.userModel.findOne({ filter: { _id: userId } })
+        if (!user) {
+            throw new NotFoundException("invalid recipient")
+        }
+        const [friendRequest] = (await this.friendRequestModel.create({
+            data: [{
+                createdBy: req.user?._id as Types.ObjectId,
+                sendTo: userId,
+            },
             ],
-        })
-      )||[]
-      if(!friendRequest)
-      {
-        throw new BadRequestException("something went wrong")
-      }
-      return successResponse({
-        res,
-        statusCode:201,
-      })
-    };
+        })) || [];
 
-    acceptFriendRequest=async(req:Request,res:Response):Promise<Response>=>
-    {
-        const {requestId}=req.params as unknown as {
-            requestId:Types.ObjectId
+        if (!friendRequest) {
+            throw new BadRequestException("something went wrong")
         }
-        const friendRequest=await this.friendRequestModel.findOneAndUpdate({
-            filter:{
-                _id:requestId,
-                sendTo:req.user?._id,
-                acceptedAt:{$exists:false},
-            },
-            update:{
-                acceptedAt:new Date(),
-            },
-        })
-        if(!friendRequest)
-        {
-            throw new NotFoundException("fail to find matching results")
-        }
-        await this.userModel.updateOne({
-            filter:{_id:friendRequest.sendTo},
-            update:{
-                $addToSet:{friends:friendRequest.createdBy},
-            }
-        })
+
         return successResponse({
             res,
-            statusCode:201,
-        })
-    }
+            statusCode: 201
+        });
+    };
+
+    acceptFriendRequest = async (req: Request, res: Response): Promise<Response> => {
+        const { requestId } = req.params as unknown as { requestId: Types.ObjectId };
+        const friendRequest = await this.friendRequestModel.findOneAndUpdate({
+            filter: {
+                _id: requestId,
+                acceptedAt: { $exists: false },
+                sendTo: req.user?._id,
+            },
+            update: {
+                acceptedAt: new Date(),
+            }
+        });
+        if (!friendRequest) {
+            throw new NotFoundException("fail to find matching result");
+        }
+
+        await Promise.all([
+            await this.userModel.updateOne({
+                filter: { _id: friendRequest.createdBy },
+                update: {
+                    $addToSet: { friends: friendRequest.sendTo },
+                },
+            }),
+
+            await this.userModel.updateOne({
+                filter: { _id: friendRequest.sendTo },
+                update: {
+                    $addToSet: { friends: friendRequest.createdBy },
+                },
+            }),
+
+        ]);
+
+        return successResponse({
+            res,
+        });
+    };
 
     freezeAccount = async (req: Request, res: Response): Promise<Response> => {
-        const { userId } = (req.params as IFreezeAccountDTO) || {};
+        const { userId } = (req.params as IFreezeAccountDto) || {};
         if (userId && req.user?.role !== RoleEnum.admin) {
             throw new ForbiddenException("not authorized user");
         }
@@ -253,7 +305,7 @@ class UserService {
     }
 
     restoreAccount = async (req: Request, res: Response): Promise<Response> => {
-        const { userId } = req.params as IRestoreAccountDTO;
+        const { userId } = req.params as IRestoreAccountDto;
 
         const user = await this.userModel.updateOne({
 
@@ -280,7 +332,7 @@ class UserService {
     }
 
     hardDeleteAccount = async (req: Request, res: Response): Promise<Response> => {
-        const { userId } = req.params as IHardDeleteAccountDTO;
+        const { userId } = req.params as IHardDeleteAccountDto;
 
         const user = await this.userModel.deleteOne({
 
@@ -333,6 +385,37 @@ class UserService {
         return successResponse<ILoginResponse>({ res, data: { credentials } });
 
     };
+
+    welcome = (user:HUserDocument): string => {
+        console.log({s:user})
+        return "Hello";
+    };
+
+    allUsers =async (args: { name: string; gender: GenderEnum;authUser:HUserDocument }):Promise<HUserDocument[]> => {
+        return await this.userModel.find({
+            filter:{_id:{$ne:authUser._id},gender:args.gender}
+        })
+    }
+
+    searchUsers = (args: { email: string; }): { message: string; statusCode: number; data: IUser } => {
+        const user = users.find((ele) => ele.email === args.email);
+        if (!user) {
+            throw new GraphQLError("fail to find matching result", {
+                extensions: { statusCode: 404 }
+            })
+        }
+        return { message: "Done", statusCode: 200, data: user }
+    }
+
+    addFollower = (args: { friendId: number; myId: number }): IUser[] => {
+        users = users.map((ele: IUser): IUser => {
+            if (ele.id === args.friendId) {
+                ele.followers.push(args.myId);
+            }
+            return ele;
+        });
+        return users;
+    }
 
 }
 

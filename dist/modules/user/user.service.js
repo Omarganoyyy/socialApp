@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.UserService = void 0;
 const user_repository_1 = require("../../DB/repository/user.repository");
 const user_model_1 = require("../../DB/model/user.model");
+// import { IUser } from "../../DB/model/User.model";
 const token_security_1 = require("../../utils/security/token.security");
 const s3_config_1 = require("../../utils/multer/s3.config");
 const cloud_multer_1 = require("../../utils/multer/cloud.multer");
@@ -10,15 +12,50 @@ const s3_events_1 = require("../../utils/multer/s3.events");
 const success_response_1 = require("../../utils/response/success.response");
 const repository_1 = require("../../DB/repository");
 const model_1 = require("../../DB/model");
+const graphql_1 = require("graphql");
+let users = [
+    {
+        id: 1,
+        name: "yassin",
+        email: "yassin@gmail.com",
+        gender: user_model_1.GenderEnum.male,
+        password: "12345",
+        followers: [],
+    },
+    {
+        id: 2,
+        name: "mohammed",
+        email: "mohammed@gmail.com",
+        gender: user_model_1.GenderEnum.male,
+        password: "12345",
+        followers: [],
+    },
+    {
+        id: 3,
+        name: "sara",
+        email: "sara@gmail.com",
+        gender: user_model_1.GenderEnum.female,
+        password: "12345",
+        followers: [],
+    },
+    {
+        id: 4,
+        name: "haya",
+        email: "haya@gmail.com",
+        gender: user_model_1.GenderEnum.female,
+        password: "12345",
+        followers: [],
+    },
+];
 class UserService {
-    chatModel = new repository_1.ChatRepository(model_1.ChatModel);
+    chatmodel = new repository_1.ChatRepository(model_1.ChatModel);
     userModel = new user_repository_1.UserRepository(user_model_1.UserModel);
     postModel = new repository_1.PostRepository(model_1.PostModel);
     friendRequestModel = new repository_1.FriendRequestRepository(model_1.FriendRequestModel);
     constructor() { }
     profileImage = async (req, res) => {
         const { ContentType, Originalname, } = req.body;
-        const { url, key } = await (0, s3_config_1.createPreSigneUploadLink)({
+        const { url, key } = await (0, s3_config_1.createPreSignedUploadLink)({
             ContentType,
             Originalname,
             path: `users/${req.decoded?._id}`,
@@ -46,8 +83,7 @@ class UserService {
             storageApproach: cloud_multer_1.StorageEnum.disk,
             files: req.files,
             path: `users/${req.decoded?._id}/cover`,
-            useLager: true,
-            ACL: "private"
+            useLarge: true,
         });
         const user = await this.userModel.findByIdAndUpdate({
             id: req.user?._id,
@@ -59,40 +95,45 @@ class UserService {
             throw new error_response_1.BadRequestException("Fail to update user Profile Image");
         }
         if (req.user?.coverImage) {
-            await (0, s3_config_1.deleteFiles)({ urls: req.user.coverImage });
+            await (0, s3_config_1.deleteFiles)({ urls: req.user.coverImage || [] });
         }
-        return (0, success_response_1.successResponse)({ res, data: { user } });
+        return (0, success_response_1.successResponse)({
+            res, data: {
+                user,
+            }
+        });
     };
     profile = async (req, res) => {
-        const profile = await this.userModel.findById({
+        const user = await this.userModel.findById({
             id: req.user?._id,
             options: {
                 populate: [
                     {
                         path: "friends",
-                        select: "firstName lastName email gender profilePicture",
+                        select: "firstName lastName email gender profileImage",
                     }
                 ]
             }
         });
-        if (!profile) {
-            throw new error_response_1.NotFoundException("fail to find user profile");
+        if (!user) {
+            throw new error_response_1.NotFoundException("fail to find your user profile");
         }
-        const groups = await this.chatModel.find({
+        const groups = await this.chatmodel.find({
             filter: {
-                participants: { $in: req.user?._id },
-                group: { $exists: true },
+                participants: {
+                    $in: req.user?._id
+                },
+                group: {
+                    $exists: true
+                },
             }
         });
-        return (0, success_response_1.successResponse)({
-            res,
-            data: { user, groups },
-        });
+        return (0, success_response_1.successResponse)({ res, data: { user, groups } });
     };
     dashboard = async (req, res) => {
         const results = await Promise.allSettled([
             this.userModel.find({ filter: {} }),
-            this.postModel.find({ filter: {} }),
+            this.postModel.find({ filter: {} })
         ]);
         return (0, success_response_1.successResponse)({
             res,
@@ -116,7 +157,7 @@ class UserService {
             }
         });
         if (!user) {
-            throw new error_response_1.NotFoundException("fail to find matching results");
+            throw new error_response_1.NotFoundException("fail to find matching result");
         }
         return (0, success_response_1.successResponse)({
             res,
@@ -128,21 +169,20 @@ class UserService {
             filter: {
                 createdBy: { $in: [req.user?._id, userId] },
                 sendTo: { $in: [req.user?._id, userId] },
-            }
+            },
         });
         if (checkFriendRequestExist) {
-            throw new error_response_1.ConflictException("Friend request already sent");
+            throw new error_response_1.ConflictException("friend request already sent");
         }
         const user = await this.userModel.findOne({ filter: { _id: userId } });
         if (!user) {
-            throw new error_response_1.NotFoundException("Invalid recipient");
+            throw new error_response_1.NotFoundException("invalid recipient");
         }
         const [friendRequest] = (await this.friendRequestModel.create({
-            data: [
-                {
+            data: [{
                     createdBy: req.user?._id,
                     sendTo: userId,
-                }
+                },
             ],
         })) || [];
         if (!friendRequest) {
@@ -150,7 +190,7 @@ class UserService {
         }
         return (0, success_response_1.successResponse)({
             res,
-            statusCode: 201,
+            statusCode: 201
         });
     };
     acceptFriendRequest = async (req, res) => {
@@ -158,25 +198,32 @@ class UserService {
         const friendRequest = await this.friendRequestModel.findOneAndUpdate({
             filter: {
                 _id: requestId,
-                sendTo: req.user?._id,
                 acceptedAt: { $exists: false },
+                sendTo: req.user?._id,
             },
             update: {
                 acceptedAt: new Date(),
-            },
-        });
-        if (!friendRequest) {
-            throw new error_response_1.NotFoundException("fail to find matching results");
-        }
-        await this.userModel.updateOne({
-            filter: { _id: friendRequest.sendTo },
-            update: {
-                $addToSet: { friends: friendRequest.createdBy },
             }
         });
+        if (!friendRequest) {
+            throw new error_response_1.NotFoundException("fail to find matching result");
+        }
+        await Promise.all([
+            await this.userModel.updateOne({
+                filter: { _id: friendRequest.createdBy },
+                update: {
+                    $addToSet: { friends: friendRequest.sendTo },
+                },
+            }),
+            await this.userModel.updateOne({
+                filter: { _id: friendRequest.sendTo },
+                update: {
+                    $addToSet: { friends: friendRequest.createdBy },
+                },
+            }),
+        ]);
         return (0, success_response_1.successResponse)({
             res,
-            statusCode: 201,
         });
     };
     freezeAccount = async (req, res) => {
@@ -263,5 +310,33 @@ class UserService {
         await (0, token_security_1.createRevokeToken)(req.decoded);
         return (0, success_response_1.successResponse)({ res, data: { credentials } });
     };
+    welcome = (user) => {
+        console.log({ s: user });
+        return "Hello";
+    };
+    allUsers = async (args) => {
+        return await this.userModel.find({
+            filter: { _id: { $ne: authUser._id }, gender: args.gender }
+        });
+    };
+    searchUsers = (args) => {
+        const user = users.find((ele) => ele.email === args.email);
+        if (!user) {
+            throw new graphql_1.GraphQLError("fail to find matching result", {
+                extensions: { statusCode: 404 }
+            });
+        }
+        return { message: "Done", statusCode: 200, data: user };
+    };
+    addFollower = (args) => {
+        users = users.map((ele) => {
+            if (ele.id === args.friendId) {
+                ele.followers.push(args.myId);
+            }
+            return ele;
+        });
+        return users;
+    };
 }
+exports.UserService = UserService;
 exports.default = new UserService();

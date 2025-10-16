@@ -1,7 +1,7 @@
 import type { Request,Response } from "express";
 import { successResponse } from "../../utils/response/success.response";
 import { PostRepository, UserRepository } from "../../DB/repository";
-import { AllowCommentsEnum, commentModel, HPostDocument, PostModel, UserModel } from "../../DB/model";
+import { AllowCommentsEnum, commentModel, HPostDocument, HUserDocument, PostModel, UserModel } from "../../DB/model";
 import { CommentRepository } from "../../DB/repository/comment.repository";
 import { BadRequestException, NotFoundException } from "../../utils/response/error.response";
 import { deleteFiles, uploadFiles } from "../../utils/multer/s3.config";
@@ -22,7 +22,7 @@ class CommentService
             filter:{
                 _id:postId,
                 allowComments:AllowCommentsEnum.allow,
-                $or:postAvailability(req),
+                $or:postAvailability(req.user as HUserDocument),
             }
         })
         if(!post)
@@ -77,7 +77,7 @@ class CommentService
                         path:"postId",
                         match:{
                             allowComments:AllowCommentsEnum.allow,
-                            $or:postAvailability(req)
+                            $or:postAvailability(req.user as HUserDocument)
                         }
                     }
                 ]

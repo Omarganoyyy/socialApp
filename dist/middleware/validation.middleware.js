@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generalFields = exports.validation = void 0;
-const error_response_1 = require("../utils/response/error.response");
+exports.generalFields = exports.graphValidation = exports.validation = void 0;
 const zod_1 = require("zod");
+const error_response_1 = require("../utils/response/error.response");
 const mongoose_1 = require("mongoose");
+const graphql_1 = require("graphql");
 const validation = (schema) => {
     return (req, res, next) => {
-        const validationErrors = [];
+        const validationError = [];
         for (const key of Object.keys(schema)) {
             if (!schema[key])
                 continue;
@@ -14,36 +15,53 @@ const validation = (schema) => {
                 req.body.attachment = req.file;
             }
             if (req.files) {
-                console.log(req.files);
+                req.body.attachments = req.files;
             }
             const validationResult = schema[key].safeParse(req[key]);
             if (!validationResult.success) {
                 const errors = validationResult.error;
-                validationErrors.push({
+                validationError.push({
                     key,
-                    issues: errors.issues.map((issue) => {
-                        return { message: issue.message, path: issue.path };
-                    })
+                    issues: errors.issues.map((issues) => {
+                        return { message: issues.message, path: issues.path };
+                    }),
                 });
             }
         }
-        if (validationErrors.length) {
-            throw new error_response_1.BadRequestException("Validation Error", {
-                validationErrors,
-            });
+        if (validationError.length) {
+            throw new error_response_1.BadRequestException("validation Error", validationError);
         }
         return next();
     };
 };
 exports.validation = validation;
+const graphValidation = async (schema, args) => {
+    const validationResult = await schema.safeParseAsync(args);
+    if (!validationResult.success) {
+        const errors = validationResult.error;
+        throw new graphql_1.GraphQLError("Validation Error", {
+            extensions: {
+                statusCode: 400,
+                issues: {
+                    Key: "args",
+                    issues: errors.issues.map((issue) => {
+                        return { path: issue.path, message: issue.message };
+                    }),
+                },
+            },
+        });
+    }
+};
+exports.graphValidation = graphValidation;
 exports.generalFields = {
-    username: zod_1.z.string({
-        error: "username is required",
-    }).min(2, { error: "min length is 2 char" }).max(20, { error: "min length is 20 char" }),
-    email: zod_1.z.email({ error: "valid email must be like to example@domain.com" }),
-    otp: zod_1.z.string().regex(/^\d{6}$/),
-    password: zod_1.z.string().regex(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[a-zA-Z]).{8,}$/),
+    username: zod_1.z.string().min(2).max(20),
+    email: zod_1.z.email(),
+    password: zod_1.z
+        .string()
+        .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&._-])[A-Za-z\d@$!%*?&._-]{8,16}$/),
     confirmPassword: zod_1.z.string(),
+    otp: zod_1.z.string().regex(/^\d{6}$/),
+    idToken: zod_1.z.string(),
     file: function (mimetype) {
         return zod_1.z
             .strictObject({
@@ -57,9 +75,9 @@ exports.generalFields = {
         })
             .refine((data) => {
             return data.buffer || data.path;
-        }, { error: "neither path or buffer is available", path: ["file"] });
+        }, { error: "Neither Path Or Buffer Is Available", path: ["file"] });
     },
     id: zod_1.z.string().refine((data) => {
         return mongoose_1.Types.ObjectId.isValid(data);
-    }, { error: "invalid objectId fromat" }).max(10).optional(),
+    }, { error: "Invalid ObjectId Format" }),
 };

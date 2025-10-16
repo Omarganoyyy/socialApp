@@ -17,6 +17,9 @@ const s3_config_1 = require("./utils/multer/s3.config");
 const node_util_1 = require("node:util");
 const node_stream_1 = require("node:stream");
 const chat_1 = require("./modules/chat");
+const graphQl_1 = require("./modules/graphQl");
+const graphql_http_1 = require("graphql-http");
+const middleware_1 = require("./middleware");
 const createS3WriteStreamPipe = (0, node_util_1.promisify)(node_stream_1.pipeline);
 const limiter = (0, express_rate_limit_1.rateLimit)({
     windowMs: 60 * 60000,
@@ -67,5 +70,9 @@ const bootstrap = async () => {
         console.log(`Server is running on port ::: ${port}`);
     });
     //initializeIo(httpServer)
+    app.get("/sayHi", (req, res) => {
+        return res.json({ message: "Done" });
+    });
+    app.all('/graphql', (0, middleware_1.authentication)(), (0, graphql_http_1.createHandler)({ schema: graphQl_1.schema, context: (req) => ({ user: req.raw.user }) }));
 };
 exports.default = bootstrap;
